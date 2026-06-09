@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  feishu-passwd-bot:
+    image: ghcr.io/rime1994/feishu-passwd-bot:latest
+    container_name: feishu-passwd-bot
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    networks:
+      - go-ldap-admin
+
+# 接入已有的 go-ldap-admin 网络，使容器名可解析
+networks:
+  go-ldap-admin:
+    external: true
+    name: goldapadmin_go-ldap-admin

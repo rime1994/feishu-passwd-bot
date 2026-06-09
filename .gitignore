@@ -1,0 +1,11 @@
+# 编译产物
+feishu-passwd-bot
+*.exe
+
+# 敏感配置（只提交 .env.example，不提交 .env）
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
