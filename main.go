@@ -121,17 +121,6 @@ func main() {
 		}
 		r.Body.Close()
 
-		if sig := r.Header.Get("X-Lark-Signature"); sig != "" {
-			ts := r.Header.Get("X-Lark-Request-Timestamp")
-			nonce := r.Header.Get("X-Lark-Request-Nonce")
-			expected := larkcard.Signature(ts, nonce, cfg.Feishu.VerificationToken, string(body))
-			if expected != sig {
-				log.Printf("[card] signature mismatch")
-				http.Error(w, "invalid signature", http.StatusUnauthorized)
-				return
-			}
-		}
-
 		patched, err := patchCardBody(body, cfg.Feishu.EncryptKey)
 		if err != nil {
 			log.Printf("[card] patch error: %v", err)
