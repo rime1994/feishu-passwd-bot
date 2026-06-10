@@ -79,30 +79,59 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 	openID := action.OpenID
 	// user_id is sent directly in the card callback; avoids an extra Contact API round-trip.
 	userID := action.UserID
+	msgID := action.OpenMessageID
 
 	switch actionVal {
 	case "cancel":
-		return card.CancelCard(), nil
+		go h.updateCard(msgID, card.CancelCard())
+		return h.ack(), nil
 
 	case "retry":
-		return card.PasswordFormCard(""), nil
+		go h.updateCard(msgID, card.PasswordFormCard(""))
+		return h.ack(), nil
 
 	case "submit_password":
-		return h.handleSubmit(ctx, openID, userID, action.Action.FormValue)
+		return h.handleSubmit(ctx, openID, userID, msgID, action.Action.FormValue)
 
 	default:
 		return nil, nil
 	}
 }
 
+// updateCard 通过 Im.Message.Patch 替换卡片内容。
+// Schema 2.0 不支持从 callback response 直接更新卡片，必须走 Patch API。
+func (h *Handler) updateCard(msgID, cardJSON string) {
+	if msgID == "" {
+		return
+	}
+	ctx := context.Background()
+	_, err := h.client.Im.Message.Patch(ctx,
+		larkim.NewPatchMessageReqBuilder().
+			MessageId(msgID).
+			Body(larkim.NewPatchMessageReqBodyBuilder().
+				Content(cardJSON).
+				Build()).
+			Build(),
+	)
+	if err != nil {
+		log.Printf("[handler] updateCard failed msg_id=%s err=%v", msgID, err)
+	}
+}
+
+// ack 返回飞书 schema 2.0 回调的空确认响应，防止触发重试和表单重置。
+func (h *Handler) ack() *larkcard.CustomResp {
+	return &larkcard.CustomResp{StatusCode: 200, Body: map[string]any{}}
+}
+
 // handleSubmit 处理密码提交
-func (h *Handler) handleSubmit(ctx context.Context, openID, userID string, formValue map[string]any) (any, error) {
+func (h *Handler) handleSubmit(ctx context.Context, openID, userID, msgID string, formValue map[string]any) (any, error) {
 	newPass, _ := formValue["new_password"].(string)
 	confirmPass, _ := formValue["confirm_password"].(string)
 
 	// 密码校验
 	if err := validatePassword(newPass, confirmPass); err != nil {
-		return card.ErrorCard(err.Error()), nil
+		go h.updateCard(msgID, card.ErrorCard(err.Error()))
+		return h.ack(), nil
 	}
 
 	// 优先使用卡片回调中的 user_id，否则调 Contact API 解析
@@ -111,26 +140,31 @@ func (h *Handler) handleSubmit(ctx context.Context, openID, userID string, formV
 		userID, err = h.resolveUserID(ctx, openID)
 		if err != nil || userID == "" {
 			log.Printf("[handler] 获取 user_id 失败 open_id=%s err=%v", openID, err)
-			return card.ErrorCard("无法获取您的账号信息，请联系管理员"), nil
+			go h.updateCard(msgID, card.ErrorCard("无法获取您的账号信息，请联系管理员"))
+			return h.ack(), nil
 		}
 	}
 
 	userDN, err := h.ldapClient.FindUserDN(userID)
 	if err != nil {
 		log.Printf("[handler] LDAP 查询失败 user_id=%s err=%v", userID, err)
-		return card.ErrorCard("查询 LDAP 账号失败，请稍后重试"), nil
+		go h.updateCard(msgID, card.ErrorCard("查询 LDAP 账号失败，请稍后重试"))
+		return h.ack(), nil
 	}
 	if userDN == "" {
-		return card.ErrorCard("未找到您的 LDAP 账号，请确认已完成飞书同步"), nil
+		go h.updateCard(msgID, card.ErrorCard("未找到您的 LDAP 账号，请确认已完成飞书同步"))
+		return h.ack(), nil
 	}
 
 	if err := h.ldapClient.ChangePassword(userDN, newPass); err != nil {
 		log.Printf("[handler] 改密失败 dn=%s err=%v", userDN, err)
-		return card.ErrorCard("密码修改失败，请稍后重试"), nil
+		go h.updateCard(msgID, card.ErrorCard("密码修改失败，请稍后重试"))
+		return h.ack(), nil
 	}
 
 	log.Printf("[handler] 密码修改成功 dn=%s", userDN)
-	return card.SuccessCard(), nil
+	go h.updateCard(msgID, card.SuccessCard())
+	return h.ack(), nil
 }
 
 // resolveUserID 通过 open_id 获取飞书 user_id
