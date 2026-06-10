@@ -88,15 +88,21 @@ func patchCardBody(body []byte, encryptKey string) ([]byte, error) {
 				OpenID  string `json:"open_id"`
 				UnionID string `json:"union_id"`
 			} `json:"operator"`
-			Token  string          `json:"token"`
-			Action json.RawMessage `json:"action"`
+			Token   string          `json:"token"`
+			Action  json.RawMessage `json:"action"`
+			Context struct {
+				OpenMessageID string `json:"open_message_id"`
+				OpenChatID    string `json:"open_chat_id"`
+			} `json:"context"`
 		} `json:"event"`
 	}
 	if json.Unmarshal(plain, &v2) == nil && v2.Schema == "2.0" && v2.Event != nil {
 		flat := map[string]any{
-			"open_id": v2.Event.Operator.OpenID,
-			"user_id": v2.Event.Operator.UserID,
-			"token":   v2.Event.Token,
+			"open_id":         v2.Event.Operator.OpenID,
+			"user_id":         v2.Event.Operator.UserID,
+			"token":           v2.Event.Token,
+			"open_message_id": v2.Event.Context.OpenMessageID,
+			"open_chat_id":    v2.Event.Context.OpenChatID,
 		}
 		if len(v2.Event.Action) > 0 {
 			var action any
