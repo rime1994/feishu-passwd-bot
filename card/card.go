@@ -43,15 +43,11 @@ func PasswordFormCard(ldapUID string) string {
 							"placeholder": map[string]any{"tag": "plain_text", "content": "请再次输入新密码"},
 						},
 						map[string]any{
-							"tag":  "button",
-							"text": map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
-							"type": "primary",
-							"behaviors": []any{
-								map[string]any{
-									"type":  "form_submit",
-									"value": map[string]any{"action": "submit_password"},
-								},
-							},
+							"tag":         "button",
+							"text":        map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
+							"type":        "primary",
+							"action_type": "form_submit",
+							"value":       map[string]any{"action": "submit_password"},
 							"confirm": map[string]any{
 								"title": map[string]any{"tag": "plain_text", "content": "确认修改密码？"},
 								"text":  map[string]any{"tag": "plain_text", "content": "新密码将立即生效"},
