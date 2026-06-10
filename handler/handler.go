@@ -52,12 +52,23 @@ func (h *Handler) OnMessage(ctx context.Context, event *larkim.P2MessageReceiveV
 		return h.sendText(ctx, openID, "发送「修改密码」开始自助修改 LDAP 密码 🔐")
 	}
 
-	feishuUserID, _ := h.resolveUserID(ctx, openID)
+	feishuUserID, err := h.resolveUserID(ctx, openID)
+	if err != nil {
+		log.Printf("[handler] resolveUserID failed open_id=%s err=%v", openID, err)
+	}
 	ldapUID := ""
 	if feishuUserID != "" {
-		if u, err := h.ldapClient.FindUser(feishuUserID); err == nil && u != nil {
+		log.Printf("[handler] resolved user_id=%s for open_id=%s", feishuUserID, openID)
+		if u, err := h.ldapClient.FindUser(feishuUserID); err != nil {
+			log.Printf("[handler] FindUser failed user_id=%s err=%v", feishuUserID, err)
+		} else if u != nil {
 			ldapUID = u.UID
+			log.Printf("[handler] LDAP uid=%s for user_id=%s", ldapUID, feishuUserID)
+		} else {
+			log.Printf("[handler] no LDAP user found for user_id=%s", feishuUserID)
 		}
+	} else {
+		log.Printf("[handler] feishuUserID empty for open_id=%s", openID)
 	}
 	return h.sendCard(ctx, openID, card.PasswordFormCard(ldapUID))
 }
@@ -66,6 +77,8 @@ func (h *Handler) OnMessage(ctx context.Context, event *larkim.P2MessageReceiveV
 func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction) (any, error) {
 	actionVal, _ := action.Action.Value["action"].(string)
 	openID := action.OpenID
+	// user_id is sent directly in the card callback; avoids an extra Contact API round-trip.
+	userID := action.UserID
 
 	switch actionVal {
 	case "cancel":
@@ -75,7 +88,7 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 		return card.PasswordFormCard(""), nil
 
 	case "submit_password":
-		return h.handleSubmit(ctx, openID, action.Action.FormValue)
+		return h.handleSubmit(ctx, openID, userID, action.Action.FormValue)
 
 	default:
 		return nil, nil
@@ -83,7 +96,7 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 }
 
 // handleSubmit 处理密码提交
-func (h *Handler) handleSubmit(ctx context.Context, openID string, formValue map[string]any) (any, error) {
+func (h *Handler) handleSubmit(ctx context.Context, openID, userID string, formValue map[string]any) (any, error) {
 	newPass, _ := formValue["new_password"].(string)
 	confirmPass, _ := formValue["confirm_password"].(string)
 
@@ -92,11 +105,14 @@ func (h *Handler) handleSubmit(ctx context.Context, openID string, formValue map
 		return card.ErrorCard(err.Error()), nil
 	}
 
-	// 通过 open_id 获取 user_id，再查 LDAP
-	userID, err := h.resolveUserID(ctx, openID)
-	if err != nil || userID == "" {
-		log.Printf("[handler] 获取 user_id 失败 open_id=%s err=%v", openID, err)
-		return card.ErrorCard("无法获取您的账号信息，请联系管理员"), nil
+	// 优先使用卡片回调中的 user_id，否则调 Contact API 解析
+	if userID == "" {
+		var err error
+		userID, err = h.resolveUserID(ctx, openID)
+		if err != nil || userID == "" {
+			log.Printf("[handler] 获取 user_id 失败 open_id=%s err=%v", openID, err)
+			return card.ErrorCard("无法获取您的账号信息，请联系管理员"), nil
+		}
 	}
 
 	userDN, err := h.ldapClient.FindUserDN(userID)
