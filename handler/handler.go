@@ -52,7 +52,8 @@ func (h *Handler) OnMessage(ctx context.Context, event *larkim.P2MessageReceiveV
 		return h.sendText(ctx, openID, "发送「修改密码」开始自助修改 LDAP 密码 🔐")
 	}
 
-	return h.sendCard(ctx, openID, card.PasswordFormCard())
+	userID, _ := h.resolveUserID(ctx, openID)
+	return h.sendCard(ctx, openID, card.PasswordFormCard(userID))
 }
 
 // OnCardAction 处理交互卡片回调（用户提交表单）
