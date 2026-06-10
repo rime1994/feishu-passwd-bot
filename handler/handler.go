@@ -52,8 +52,14 @@ func (h *Handler) OnMessage(ctx context.Context, event *larkim.P2MessageReceiveV
 		return h.sendText(ctx, openID, "发送「修改密码」开始自助修改 LDAP 密码 🔐")
 	}
 
-	userID, _ := h.resolveUserID(ctx, openID)
-	return h.sendCard(ctx, openID, card.PasswordFormCard(userID))
+	feishuUserID, _ := h.resolveUserID(ctx, openID)
+	ldapUID := ""
+	if feishuUserID != "" {
+		if u, err := h.ldapClient.FindUser(feishuUserID); err == nil && u != nil {
+			ldapUID = u.UID
+		}
+	}
+	return h.sendCard(ctx, openID, card.PasswordFormCard(ldapUID))
 }
 
 // OnCardAction 处理交互卡片回调（用户提交表单）
@@ -66,7 +72,7 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 		return card.CancelCard(), nil
 
 	case "retry":
-		return card.PasswordFormCard(), nil
+		return card.PasswordFormCard(""), nil
 
 	case "submit_password":
 		return h.handleSubmit(ctx, openID, action.Action.FormValue)
