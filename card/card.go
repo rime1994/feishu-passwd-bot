@@ -21,40 +21,46 @@ func PasswordFormCard() string {
 				"content": "身份已通过飞书验证，请填写新密码。\n\n**密码要求：** 至少 8 位，包含字母和数字。",
 			},
 			map[string]any{
-				"tag":         "input",
-				"name":        "new_password",
-				"label":       map[string]any{"tag": "plain_text", "content": "新密码"},
-				"placeholder": map[string]any{"tag": "plain_text", "content": "请输入新密码（至少8位，字母+数字）"},
-			},
-			map[string]any{
-				"tag":         "input",
-				"name":        "confirm_password",
-				"label":       map[string]any{"tag": "plain_text", "content": "确认密码"},
-				"placeholder": map[string]any{"tag": "plain_text", "content": "请再次输入新密码"},
-			},
-			map[string]any{
-				"tag": "action",
-				"actions": []any{
+				"tag":  "form",
+				"name": "password_form",
+				"elements": []any{
 					map[string]any{
-						"tag":  "button",
-						"text": map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
-						"type": "primary",
-						"value": map[string]any{"action": "submit_password"},
-						"behaviors": []any{
-							map[string]any{
-								"type": "form_action",
-								"confirm": map[string]any{
-									"title": map[string]any{"tag": "plain_text", "content": "确认修改密码？"},
-									"text":  map[string]any{"tag": "plain_text", "content": "新密码将立即生效"},
-								},
-							},
-						},
+						"tag":         "input",
+						"name":        "new_password",
+						"label":       map[string]any{"tag": "plain_text", "content": "新密码"},
+						"placeholder": map[string]any{"tag": "plain_text", "content": "请输入新密码（至少8位，字母+数字）"},
 					},
 					map[string]any{
-						"tag":   "button",
-						"text":  map[string]any{"tag": "plain_text", "content": "取消"},
-						"type":  "default",
-						"value": map[string]any{"action": "cancel"},
+						"tag":         "input",
+						"name":        "confirm_password",
+						"label":       map[string]any{"tag": "plain_text", "content": "确认密码"},
+						"placeholder": map[string]any{"tag": "plain_text", "content": "请再次输入新密码"},
+					},
+					map[string]any{
+						"tag": "action",
+						"actions": []any{
+							map[string]any{
+								"tag":  "button",
+								"text": map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
+								"type": "primary",
+								"value": map[string]any{"action": "submit_password"},
+								"behaviors": []any{
+									map[string]any{
+										"type": "form_action",
+										"confirm": map[string]any{
+											"title": map[string]any{"tag": "plain_text", "content": "确认修改密码？"},
+											"text":  map[string]any{"tag": "plain_text", "content": "新密码将立即生效"},
+										},
+									},
+								},
+							},
+							map[string]any{
+								"tag":   "button",
+								"text":  map[string]any{"tag": "plain_text", "content": "取消"},
+								"type":  "default",
+								"value": map[string]any{"action": "cancel"},
+							},
+						},
 					},
 				},
 			},
