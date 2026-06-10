@@ -43,22 +43,30 @@ func PasswordFormCard(ldapUID string) string {
 							"placeholder": map[string]any{"tag": "plain_text", "content": "请再次输入新密码"},
 						},
 						map[string]any{
-							"tag":         "button",
-							"text":        map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
-							"type":        "primary",
-							"action_type": "form_submit",
-							"value":       map[string]any{"action": "submit_password"},
+							"tag":  "button",
+							"text": map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
+							"type": "primary",
+							"behaviors": []any{
+								map[string]any{
+									"type":  "form_submit",
+									"value": map[string]any{"action": "submit_password"},
+								},
+							},
 							"confirm": map[string]any{
 								"title": map[string]any{"tag": "plain_text", "content": "确认修改密码？"},
 								"text":  map[string]any{"tag": "plain_text", "content": "新密码将立即生效"},
 							},
 						},
 						map[string]any{
-							"tag":         "button",
-							"text":        map[string]any{"tag": "plain_text", "content": "取消"},
-							"type":        "default",
-							"action_type": "callback",
-							"value":       map[string]any{"action": "cancel"},
+							"tag":  "button",
+							"text": map[string]any{"tag": "plain_text", "content": "取消"},
+							"type": "default",
+							"behaviors": []any{
+								map[string]any{
+									"type":  "callback",
+									"value": map[string]any{"action": "cancel"},
+								},
+							},
 						},
 					},
 				},
@@ -103,11 +111,15 @@ func ErrorCard(msg string) string {
 					"content": msg + "\n\n如需帮助请联系管理员。",
 				},
 				map[string]any{
-					"tag":         "button",
-					"text":        map[string]any{"tag": "plain_text", "content": "🔄 重试"},
-					"type":        "primary",
-					"action_type": "callback",
-					"value":       map[string]any{"action": "retry"},
+					"tag":  "button",
+					"text": map[string]any{"tag": "plain_text", "content": "🔄 重试"},
+					"type": "primary",
+					"behaviors": []any{
+						map[string]any{
+							"type":  "callback",
+							"value": map[string]any{"action": "retry"},
+						},
+					},
 				},
 			},
 		},
