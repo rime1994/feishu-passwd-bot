@@ -1,11 +1,16 @@
 package ldap
 
 import (
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"strings"
+	"unicode/utf16"
 
 	"feishu-passwd-bot/config"
 
 	goldap "github.com/go-ldap/ldap/v3"
+	"golang.org/x/crypto/md4"
 )
 
 type Client struct {
@@ -70,7 +75,8 @@ func (c *Client) FindUserDN(feishuUserID string) (string, error) {
 	return u.DN, nil
 }
 
-// ChangePassword 通过 LDAP admin 权限修改指定 DN 的密码
+// ChangePassword 通过 LDAP admin 权限修改指定 DN 的密码，并同步更新 sambaNTPassword。
+// 两步操作强一致：任一失败均返回错误。
 func (c *Client) ChangePassword(userDN, newPassword string) error {
 	conn, err := goldap.DialURL(c.cfg.Addr)
 	if err != nil {
@@ -86,5 +92,26 @@ func (c *Client) ChangePassword(userDN, newPassword string) error {
 	if _, err := conn.PasswordModify(req); err != nil {
 		return fmt.Errorf("密码修改失败: %w", err)
 	}
+
+	// 同步写入 sambaNTPassword，供 FreeRADIUS PEAP/MSCHAPv2 认证使用
+	ntHashHex := ntHash(newPassword)
+	modReq := goldap.NewModifyRequest(userDN, nil)
+	modReq.Replace("sambaNTPassword", []string{ntHashHex})
+	if err := conn.Modify(modReq); err != nil {
+		return fmt.Errorf("sambaNTPassword 写入失败: %w", err)
+	}
+
 	return nil
+}
+
+// ntHash 计算 Windows NT Hash：MD4(UTF-16LE(password))，返回大写 hex 字符串。
+func ntHash(password string) string {
+	utf16le := utf16.Encode([]rune(password))
+	buf := make([]byte, len(utf16le)*2)
+	for i, r := range utf16le {
+		binary.LittleEndian.PutUint16(buf[i*2:], r)
+	}
+	h := md4.New()
+	h.Write(buf)
+	return strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
 }
