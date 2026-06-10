@@ -45,22 +45,27 @@ func PasswordFormCard(userID string) string {
 									"tag":  "button",
 									"text": map[string]any{"tag": "plain_text", "content": "✅ 确认修改"},
 									"type": "primary",
-									"value": map[string]any{"action": "submit_password"},
 									"behaviors": []any{
 										map[string]any{
-											"type": "form_action",
-											"confirm": map[string]any{
-												"title": map[string]any{"tag": "plain_text", "content": "确认修改密码？"},
-												"text":  map[string]any{"tag": "plain_text", "content": "新密码将立即生效"},
-											},
+											"type":  "callback",
+											"value": map[string]any{"action": "submit_password"},
 										},
+									},
+									"confirm": map[string]any{
+										"title": map[string]any{"tag": "plain_text", "content": "确认修改密码？"},
+										"text":  map[string]any{"tag": "plain_text", "content": "新密码将立即生效"},
 									},
 								},
 								map[string]any{
-									"tag":   "button",
-									"text":  map[string]any{"tag": "plain_text", "content": "取消"},
-									"type":  "default",
-									"value": map[string]any{"action": "cancel"},
+									"tag":  "button",
+									"text": map[string]any{"tag": "plain_text", "content": "取消"},
+									"type": "default",
+									"behaviors": []any{
+										map[string]any{
+											"type":  "callback",
+											"value": map[string]any{"action": "cancel"},
+										},
+									},
 								},
 							},
 						},
