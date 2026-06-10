@@ -79,65 +79,30 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 	openID := action.OpenID
 	// user_id is sent directly in the card callback; avoids an extra Contact API round-trip.
 	userID := action.UserID
-	msgID := action.OpenMessageID
 
 	switch actionVal {
 	case "cancel":
-		h.updateCard(ctx, msgID, card.CancelCard())
-		return h.toast("info", "已取消"), nil
+		return card.CancelCard(), nil
 
 	case "retry":
-		h.updateCard(ctx, msgID, card.PasswordFormCard(""))
-		return h.toast("info", "请重新填写"), nil
+		return card.PasswordFormCard(""), nil
 
 	case "submit_password":
-		return h.handleSubmit(ctx, openID, userID, msgID, action.Action.FormValue)
+		return h.handleSubmit(ctx, openID, userID, action.Action.FormValue)
 
 	default:
 		return nil, nil
 	}
 }
 
-// updateCard 通过 Im.Message.Patch 替换原始卡片消息（schema 2.0 回调不支持在 response body 里直接更新卡片）
-func (h *Handler) updateCard(ctx context.Context, msgID, cardJSON string) {
-	if msgID == "" {
-		return
-	}
-	_, err := h.client.Im.Message.Patch(ctx,
-		larkim.NewPatchMessageReqBuilder().
-			MessageId(msgID).
-			Body(larkim.NewPatchMessageReqBodyBuilder().
-				Content(cardJSON).
-				Build()).
-			Build(),
-	)
-	if err != nil {
-		log.Printf("[handler] updateCard failed msg_id=%s err=%v", msgID, err)
-	}
-}
-
-// toast 构造飞书卡片 toast 响应（schema 2.0 回调响应仅支持 toast）
-func (h *Handler) toast(typ, content string) *larkcard.CustomResp {
-	return &larkcard.CustomResp{
-		StatusCode: 200,
-		Body: map[string]any{
-			"toast": map[string]any{
-				"type":    typ,
-				"content": content,
-			},
-		},
-	}
-}
-
 // handleSubmit 处理密码提交
-func (h *Handler) handleSubmit(ctx context.Context, openID, userID, msgID string, formValue map[string]any) (any, error) {
+func (h *Handler) handleSubmit(ctx context.Context, openID, userID string, formValue map[string]any) (any, error) {
 	newPass, _ := formValue["new_password"].(string)
 	confirmPass, _ := formValue["confirm_password"].(string)
 
 	// 密码校验
 	if err := validatePassword(newPass, confirmPass); err != nil {
-		h.updateCard(ctx, msgID, card.ErrorCard(err.Error()))
-		return h.toast("error", err.Error()), nil
+		return card.ErrorCard(err.Error()), nil
 	}
 
 	// 优先使用卡片回调中的 user_id，否则调 Contact API 解析
@@ -146,31 +111,26 @@ func (h *Handler) handleSubmit(ctx context.Context, openID, userID, msgID string
 		userID, err = h.resolveUserID(ctx, openID)
 		if err != nil || userID == "" {
 			log.Printf("[handler] 获取 user_id 失败 open_id=%s err=%v", openID, err)
-			h.updateCard(ctx, msgID, card.ErrorCard("无法获取您的账号信息，请联系管理员"))
-			return h.toast("error", "获取账号信息失败"), nil
+			return card.ErrorCard("无法获取您的账号信息，请联系管理员"), nil
 		}
 	}
 
 	userDN, err := h.ldapClient.FindUserDN(userID)
 	if err != nil {
 		log.Printf("[handler] LDAP 查询失败 user_id=%s err=%v", userID, err)
-		h.updateCard(ctx, msgID, card.ErrorCard("查询 LDAP 账号失败，请稍后重试"))
-		return h.toast("error", "查询账号失败"), nil
+		return card.ErrorCard("查询 LDAP 账号失败，请稍后重试"), nil
 	}
 	if userDN == "" {
-		h.updateCard(ctx, msgID, card.ErrorCard("未找到您的 LDAP 账号，请确认已完成飞书同步"))
-		return h.toast("error", "未找到 LDAP 账号"), nil
+		return card.ErrorCard("未找到您的 LDAP 账号，请确认已完成飞书同步"), nil
 	}
 
 	if err := h.ldapClient.ChangePassword(userDN, newPass); err != nil {
 		log.Printf("[handler] 改密失败 dn=%s err=%v", userDN, err)
-		h.updateCard(ctx, msgID, card.ErrorCard("密码修改失败，请稍后重试"))
-		return h.toast("error", "密码修改失败"), nil
+		return card.ErrorCard("密码修改失败，请稍后重试"), nil
 	}
 
 	log.Printf("[handler] 密码修改成功 dn=%s", userDN)
-	h.updateCard(ctx, msgID, card.SuccessCard())
-	return h.toast("success", "密码修改成功"), nil
+	return card.SuccessCard(), nil
 }
 
 // resolveUserID 通过 open_id 获取飞书 user_id
