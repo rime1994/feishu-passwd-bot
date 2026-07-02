@@ -59,14 +59,17 @@ func (h *Handler) OnMessage(ctx context.Context, event *larkim.P2MessageReceiveV
 	ldapUID := ""
 	if feishuUserID != "" {
 		log.Printf("[handler] resolved user_id=%s for open_id=%s", feishuUserID, openID)
-		if u, err := h.ldapClient.FindUser(feishuUserID); err != nil {
+		u, err := h.ldapClient.FindUser(feishuUserID)
+		if err != nil {
 			log.Printf("[handler] FindUser failed user_id=%s err=%v", feishuUserID, err)
-		} else if u != nil {
-			ldapUID = u.UID
-			log.Printf("[handler] LDAP uid=%s for user_id=%s", ldapUID, feishuUserID)
-		} else {
-			log.Printf("[handler] no LDAP user found for user_id=%s", feishuUserID)
+			return h.sendText(ctx, openID, "查询 LDAP 账号失败，请稍后再试或联系管理员。")
 		}
+		if u == nil {
+			log.Printf("[handler] no LDAP user found for user_id=%s", feishuUserID)
+			return h.sendText(ctx, openID, "未找到您的 LDAP 账号，可能飞书同步尚未完成，请稍等几分钟后再试。如长时间未解决请联系管理员。")
+		}
+		ldapUID = u.UID
+		log.Printf("[handler] LDAP uid=%s for user_id=%s", ldapUID, feishuUserID)
 	} else {
 		log.Printf("[handler] feishuUserID empty for open_id=%s", openID)
 	}
