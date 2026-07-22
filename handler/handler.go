@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
+	"time"
 	"unicode"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -86,11 +87,11 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 
 	switch actionVal {
 	case "cancel":
-		go h.updateCard(msgID, card.CancelCard())
+		go h.updateCard(msgID, "cancelled", card.CancelCard())
 		return h.ack(), nil
 
 	case "retry":
-		go h.updateCard(msgID, card.PasswordFormCard(""))
+		go h.updateCard(msgID, "form", card.PasswordFormCard(""))
 		return h.ack(), nil
 
 	case "submit_password":
@@ -103,10 +104,13 @@ func (h *Handler) OnCardAction(ctx context.Context, action *larkcard.CardAction)
 
 // updateCard 通过 Im.Message.Patch 替换卡片内容。
 // Schema 2.0 不支持从 callback response 直接更新卡片，必须走 Patch API。
-func (h *Handler) updateCard(msgID, cardJSON string) {
+func (h *Handler) updateCard(msgID, state, cardJSON string) {
 	if msgID == "" {
+		log.Printf("[card] patch skipped state=%s reason=missing_message_id", state)
 		return
 	}
+	started := time.Now()
+	log.Printf("[card] patch started state=%s message_id=%s", state, msgID)
 	ctx := context.Background()
 	_, err := h.client.Im.Message.Patch(ctx,
 		larkim.NewPatchMessageReqBuilder().
@@ -117,8 +121,10 @@ func (h *Handler) updateCard(msgID, cardJSON string) {
 			Build(),
 	)
 	if err != nil {
-		log.Printf("[handler] updateCard failed msg_id=%s err=%v", msgID, err)
+		log.Printf("[card] patch failed state=%s message_id=%s duration=%s err=%v", state, msgID, time.Since(started), err)
+		return
 	}
+	log.Printf("[card] patch complete state=%s message_id=%s duration=%s", state, msgID, time.Since(started))
 }
 
 // ack 返回飞书 schema 2.0 回调的空确认响应，防止触发重试和表单重置。
@@ -133,7 +139,7 @@ func (h *Handler) handleSubmit(ctx context.Context, openID, userID, msgID string
 
 	// 密码校验
 	if err := validatePassword(newPass, confirmPass); err != nil {
-		go h.updateCard(msgID, card.ErrorCard(err.Error()))
+		go h.updateCard(msgID, "error", card.ErrorCard(err.Error()))
 		return h.ack(), nil
 	}
 
@@ -143,7 +149,7 @@ func (h *Handler) handleSubmit(ctx context.Context, openID, userID, msgID string
 		userID, err = h.resolveUserID(ctx, openID)
 		if err != nil || userID == "" {
 			log.Printf("[handler] 获取 user_id 失败 open_id=%s err=%v", openID, err)
-			go h.updateCard(msgID, card.ErrorCard("无法获取您的账号信息，请联系管理员"))
+			go h.updateCard(msgID, "error", card.ErrorCard("无法获取您的账号信息，请联系管理员"))
 			return h.ack(), nil
 		}
 	}
@@ -151,22 +157,22 @@ func (h *Handler) handleSubmit(ctx context.Context, openID, userID, msgID string
 	userDN, err := h.ldapClient.FindUserDN(userID)
 	if err != nil {
 		log.Printf("[handler] LDAP 查询失败 user_id=%s err=%v", userID, err)
-		go h.updateCard(msgID, card.ErrorCard("查询 LDAP 账号失败，请稍后重试"))
+		go h.updateCard(msgID, "error", card.ErrorCard("查询 LDAP 账号失败，请稍后重试"))
 		return h.ack(), nil
 	}
 	if userDN == "" {
-		go h.updateCard(msgID, card.ErrorCard("未找到您的 LDAP 账号，请确认已完成飞书同步"))
+		go h.updateCard(msgID, "error", card.ErrorCard("未找到您的 LDAP 账号，请确认已完成飞书同步"))
 		return h.ack(), nil
 	}
 
 	if err := h.ldapClient.ChangePassword(userDN, newPass); err != nil {
 		log.Printf("[handler] 改密失败 dn=%s err=%v", userDN, err)
-		go h.updateCard(msgID, card.ErrorCard("密码修改失败，请稍后重试"))
+		go h.updateCard(msgID, "error", card.ErrorCard("密码修改失败，请稍后重试"))
 		return h.ack(), nil
 	}
 
 	log.Printf("[handler] 密码修改成功 dn=%s", userDN)
-	go h.updateCard(msgID, card.SuccessCard())
+	go h.updateCard(msgID, "success", card.SuccessCard())
 	return h.ack(), nil
 }
 

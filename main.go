@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	larkcard "github.com/larksuite/oapi-sdk-go/v3/card"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
@@ -30,6 +31,23 @@ func newCardActionHandler(verificationToken, encryptKey string, actionHandler fu
 	cardHandler.InitConfig()
 	cardHandler.SkipSignVerify = true
 	return cardHandler
+}
+
+// cardCallbackMetadata extracts only non-sensitive fields for timing logs.
+// In particular, it never reads or logs action.form_value.
+func cardCallbackMetadata(body []byte) (messageID, actionName string) {
+	var callback struct {
+		OpenMessageID string `json:"open_message_id"`
+		Action        struct {
+			Value struct {
+				Action string `json:"action"`
+			} `json:"value"`
+		} `json:"action"`
+	}
+	if err := json.Unmarshal(body, &callback); err != nil {
+		return "", "unknown"
+	}
+	return callback.OpenMessageID, callback.Action.Value.Action
 }
 
 func adaptSDK(h sdkHandler) http.HandlerFunc {
@@ -142,7 +160,10 @@ func main() {
 	eventDispatcher := dispatcher.NewEventDispatcher(
 		cfg.Feishu.VerificationToken,
 		cfg.Feishu.EncryptKey,
-	).OnP2MessageReceiveV1(func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
+	)
+	// Suppress SDK Debug logs, which include raw event bodies and headers.
+	eventDispatcher.InitConfig()
+	eventDispatcher.OnP2MessageReceiveV1(func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
 		return h.OnMessage(ctx, event)
 	})
 
@@ -160,6 +181,7 @@ func main() {
 
 	// Custom card handler: verify signature against original body, then patch and forward to SDK.
 	http.HandleFunc("/webhook/card", func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "read body", http.StatusBadRequest)
@@ -173,6 +195,8 @@ func main() {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		messageID, actionName := cardCallbackMetadata(patched)
+		log.Printf("[card] callback received action=%s message_id=%s", actionName, messageID)
 
 		req := &larkevent.EventReq{
 			Header:     map[string][]string(r.Header),
@@ -181,6 +205,7 @@ func main() {
 		}
 		resp := cardHandler.Handle(r.Context(), req)
 		if resp == nil {
+			log.Printf("[card] ack ready action=%s message_id=%s status=200 duration=%s", actionName, messageID, time.Since(started))
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -193,6 +218,7 @@ func main() {
 		if code == 0 {
 			code = http.StatusOK
 		}
+		log.Printf("[card] ack ready action=%s message_id=%s status=%d duration=%s", actionName, messageID, code, time.Since(started))
 		w.WriteHeader(code)
 		if len(resp.Body) > 0 {
 			_, _ = w.Write(resp.Body)
