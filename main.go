@@ -22,6 +22,16 @@ type sdkHandler interface {
 	Handle(ctx context.Context, req *larkevent.EventReq) *larkevent.EventResp
 }
 
+// newCardActionHandler configures the SDK logger before handling card callbacks.
+// The SDK logs the full callback body at Debug level, which contains form values
+// such as passwords. InitConfig installs the default Info-level filter.
+func newCardActionHandler(verificationToken, encryptKey string, actionHandler func(context.Context, *larkcard.CardAction) (any, error)) *larkcard.CardActionHandler {
+	cardHandler := larkcard.NewCardActionHandler(verificationToken, encryptKey, actionHandler)
+	cardHandler.InitConfig()
+	cardHandler.SkipSignVerify = true
+	return cardHandler
+}
+
 func adaptSDK(h sdkHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -136,7 +146,7 @@ func main() {
 		return h.OnMessage(ctx, event)
 	})
 
-	cardHandler := larkcard.NewCardActionHandler(
+	cardHandler := newCardActionHandler(
 		cfg.Feishu.VerificationToken,
 		cfg.Feishu.EncryptKey,
 		func(ctx context.Context, action *larkcard.CardAction) (any, error) {
@@ -145,7 +155,6 @@ func main() {
 	)
 	// We verify signatures ourselves against the original body; skip SDK's re-verification
 	// which would run against the patched (header-stripped) body and fail.
-	cardHandler.SkipSignVerify = true
 
 	http.Handle("/webhook/event", adaptSDK(eventDispatcher))
 
